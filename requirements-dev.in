@@ -6,3 +6,4 @@ build>=1.0.3
 pyright>=1.1.327
 ruff>=0.0.289
 pytest>=7.4
+pydocstyle>=6.3.0

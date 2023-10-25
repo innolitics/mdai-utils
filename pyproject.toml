@@ -67,6 +67,10 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 # Assume Python 3.10.
 target-version = "py310"
 
+[tool.ruff.pydocstyle]
+# Use Google-style docstrings.
+convention = "google"
+
 [tool.pyright]
 # For pre-commit to work. See contributing.md#pre-commit
 venvPath = "."
