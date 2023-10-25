@@ -1,0 +1,14 @@
+{
+    "mdai_domain": "uab.md.ai",
+    "mdai_project_id": "L1NprBvP",
+    "mdai_dataset_id": "D_odXMLm",
+    "mdai_label_group_id": "G_P914xZ",
+    "mdai_label_ids": {
+        "heart": "L_W4Xx64",
+        "inner-chest": "L_npal0d"
+    },
+    "labels": [
+        "heart",
+        "inner-chest"
+    ]
+}
