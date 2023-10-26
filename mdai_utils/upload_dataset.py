@@ -36,13 +36,14 @@ def upload_dataset(mdai_dataset_id, dir_path, order_exams_by="default"):
         f"{order_exams_by}",
         f"{dir_path}",
     ]
-    return subprocess.run(
+    completed_process = subprocess.run(
         command,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
         check=True,
-        encoding="utf-8",
     )
+    if completed_process.returncode or completed_process.stderr:
+        raise Exception(f"Error uploading dataset: {completed_process}.")
+    return completed_process
 
 
 if __name__ == "__main__":
