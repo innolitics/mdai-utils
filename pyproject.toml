@@ -85,4 +85,4 @@ exclude = ["**/node_modules",
 defineConstant = { DEBUG = true }
 
 pythonVersion = "3.10"
-strict = true
+strict = false

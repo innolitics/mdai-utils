@@ -1,5 +1,6 @@
 {
     "mdai_domain": "uab.md.ai",
+    "mdai_token_env_variable": "MDAI_TOKEN",
     "mdai_project_id": "L1NprBvP",
     "mdai_dataset_id": "D_odXMLm",
     "mdai_label_group_id": "G_P914xZ",
@@ -7,6 +8,8 @@
         "heart": "L_W4Xx64",
         "inner-chest": "L_npal0d"
     },
+    "mdai_annotations_only": true,
+    "mdai_no_fixing_metadata": false,
     "labels": [
         "heart",
         "inner-chest"
