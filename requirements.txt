@@ -120,6 +120,8 @@ scipy==1.11.3
     # via
     #   dicom2nifti
     #   scikit-image
+simpleitk==2.3.0
+    # via -r requirements.in
 six==1.16.0
     # via
     #   python-dateutil

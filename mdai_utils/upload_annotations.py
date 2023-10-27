@@ -69,8 +69,11 @@ def upload_image_annotation_slice(
         failed_annotations (list): List of failed annotations. If empty, all annotations were uploaded successfully.
     """
     data_np = read_data_image(segmentation_image_path)
+    if data_np.ndim == 3:
+        # The perpendicular dimension is at index 0 in the numpy array.
+        data_np = data_np.squeeze(0)
     return upload_data_annotation_slice(
-        data_np=data_np.T,
+        data_np=data_np,
         mdai_client=mdai_client,
         mdai_project_id=mdai_project_id,
         mdai_dataset_id=mdai_dataset_id,

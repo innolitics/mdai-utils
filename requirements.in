@@ -3,3 +3,4 @@ pydicom>=2.4.3
 itk>=5.3.0
 bidict>=0.22.1
 opencv-python>=4.8.1.78
+simpleITK>=2.3.0

@@ -56,11 +56,11 @@ def mdai_setup(
     with open(parameters_file) as f:
         parameters = json.load(f)
 
-    fixture_dir = _current_dir / "fixtures"
+    fixtures_dir = _current_dir / "fixtures"
     mdai_domain = parameters.get("mdai_domain") or "md.ai"
     mdai_client = mdai.Client(domain=mdai_domain, access_token=token)
     return {
         "mdai_client": mdai_client,
         "parameters": parameters,
-        "fixture_dir": fixture_dir,
+        "fixtures_dir": fixtures_dir,
     }

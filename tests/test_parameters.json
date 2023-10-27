@@ -10,6 +10,6 @@
     "mdai_annotations_only": true,
     "mdai_no_fixing_metadata": false,
     "labels": [
-        "mylabel",
+        "mylabel"
     ]
 }
