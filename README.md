@@ -4,7 +4,7 @@ Utility functions for MD.ai. Download and upload 2D and 3D segmentation images.
 
 ## Download data
 
-- Download all data, dicom and annotations. Dicoms are only needed once,
+- Download all data, dicom and annotations. DICOMs are only needed once,
 or when data is added to the mdai dataset)
 
 ```bash
