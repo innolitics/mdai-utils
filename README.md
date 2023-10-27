@@ -4,8 +4,7 @@ Utility functions for MD.ai. Download and upload 2D and 3D segmentation images.
 
 ## Download data
 
-- Download all data, dicom and annotations. DICOMs are only needed once,
-or when data is added to the mdai dataset)
+- Download all data, dicoms and annotations.
 
 ```bash
 python -m mdai_utils.download_annotations \
@@ -14,7 +13,8 @@ python -m mdai_utils.download_annotations \
 --download_dicoms
 ```
 
-Once dicoms are downloaded, just download annotations, a json file will be generated in `./data`:
+Once dicoms are downloaded locally, just download annotations. The annotations
+coming from MD.ai are json files. They will be stored in `./data`:
 
 ```bash
 python -m mdai_utils.download_annotations \
@@ -23,6 +23,8 @@ python -m mdai_utils.download_annotations \
 ```
 
 ## Upload 2D segmentations
+
+To upload a single image or slice, we need its sop_instance_uid.
 
 ```bash
 python -m mdai_utils.upload_annotation_slice \
@@ -44,10 +46,9 @@ python -m mdai_utils.dicom_to_volume -i ./tests/fixtures/humanct_0002_1000_1004 
 ```
 
 Parallel to the output image location, a `{image_filename}_SOPInstanceUIDs.json`
-will be saved with the slice
-mappings.
+will be saved with the slice mappings.
 
-If we have a 3D volume segmentation we want to upload, use the mappings:
+This json will be used in `upload_annotation_volume`:
 
 ```bash
 python -m mdai_utils.upload_annotation_volume \
@@ -77,3 +78,17 @@ to upload and download the test data.
 
 We provide a tiny dataset that you can upload to a test dataset in your md.ai
 instance. Only needed to run once: `pytest tests -rP --upload-only`.
+
+
+## Contact
+
+![innolitis_logo_primaryw400](https://github.com/innolitics/mdai-utils/assets/3021667/6f9e269f-f96e-4b27-90c5-8fb48da70901)
+
+You can contact us directly through our [website][contact_link].
+
+If you find a bug or have suggestions for improvement, please open a
+[GitHub issue][issue_link] or make a [pull request][pr_link].
+
+[contact_link]: https://innolitics.com/about/contact/
+[issue_link]: https://github.com/innolitics/mdai_utils/issues/new/choose
+[pr_link]: https://github.com/innolitics/mdai_utils/pulls
