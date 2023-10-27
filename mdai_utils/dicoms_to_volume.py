@@ -27,7 +27,12 @@ class ImageAndMetadata(NamedTuple):
     metadata: dict
 
 
-def read_dicoms_into_volume(valid_dcm_file_list) -> ImageAndMetadata:
+def metadata_dict_to_sop_instance_uids(metadata_dict):
+    """Convert a metadata dictionary to a dictionary mapping slice index to SOPInstanceUID."""
+    return {int(k): v["SOPInstanceUID"] for k, v in metadata_dict.items()}
+
+
+def dicoms_to_volume(valid_dcm_file_list) -> ImageAndMetadata:
     """Convert a list of DICOM files to a image volume. Also returns metadata
     (SOPInstanceUID) for each slice in the volume.
 
@@ -58,3 +63,43 @@ def read_dicoms_into_volume(valid_dcm_file_list) -> ImageAndMetadata:
             for slice_idx, (fn, uid) in enumerate(zip(dicom_names, uids))
         }
         return ImageAndMetadata(image=image, metadata=metadata)
+
+
+def _get_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        "--input_directory",
+        type=str,
+        required=True,
+        help="Path to the directory containing the DICOM files.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_image",
+        type=str,
+        required=True,
+        help="Path to the output image.",
+    )
+    return parser
+
+
+def main(input_directory, output_image):
+    """
+    Convert a directory containing DICOM files to a volume image, and save the metadata to map SOPInstanceUID to slice indices.
+    """
+    valid_dcm_file_list = file_list_from_directory(input_directory)
+    image_and_metadata = dicoms_to_volume(valid_dcm_file_list)
+    write_image_and_metadata(
+        image=image_and_metadata.image,
+        metadata=image_and_metadata.metadata,
+        output_image_filename=output_image,
+    )
+
+
+if __name__ == "__main__":
+    parser = _get_parser()
+    args = parser.parse_args()
+    main(args.input_directory, args.output_image)

@@ -1,0 +1,22 @@
+{
+  "0": {
+    "dicom_file": "tests/fixtures/humanct_0002_1000_1004/vhf.1000.dcm",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414630768"
+  },
+  "1": {
+    "dicom_file": "tests/fixtures/humanct_0002_1000_1004/vhf.1001.dcm",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414645741"
+  },
+  "2": {
+    "dicom_file": "tests/fixtures/humanct_0002_1000_1004/vhf.1002.dcm",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414662833"
+  },
+  "3": {
+    "dicom_file": "tests/fixtures/humanct_0002_1000_1004/vhf.1003.dcm",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414677861"
+  },
+  "4": {
+    "dicom_file": "tests/fixtures/humanct_0002_1000_1004/vhf.1004.dcm",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414694890"
+  }
+}
