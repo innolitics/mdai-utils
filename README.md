@@ -2,6 +2,36 @@
 
 Utility functions for MD.ai
 
+## Download data
+
+- Download all data, dicom and annotations. Dicoms are only needed once,
+or when data is added to the mdai dataset)
+
+```bash
+python -m mdai_utils.download_annotations \
+--parameters myparameters.json \
+-o ./data \
+--download_dicoms
+```
+
+Once dicoms are downloaded, just download annotations, a json file will be generated in `./data`:
+
+```bash
+python -m mdai_utils.download_annotations \
+ --parameters myparameters.json \
+ -o ./data
+```
+
+## Upload annotations / segmentations
+
+```bash
+python -m mdai_utils.upload_annotations \
+ --parameters ./tests/test_local_parameters.json \
+ --sop_instance_uid "1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414630768" \
+ --label_name mylabel \
+ -i ./tests/fixtures/humanct_0002_1000_seg.nii.gz
+```
+
 ## Development
 
 For information about building, running, and contributing to this code base,

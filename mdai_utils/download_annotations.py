@@ -163,9 +163,11 @@ def main(args):
 
     out_folder = args.out_folder or parameters.get("out_folder", DEFAULT_DATA_PATH)
     no_download = args.no_download or parameters.get("no_download", False)
-    mdai_annotations_only = not args.download_dicoms or parameters.get(
+
+    download_dicoms = args.download_dicoms or not parameters.get(
         "mdai_annotations_only", True
     )
+    mdai_annotations_only = not download_dicoms
     no_fixing_metadata = args.no_fixing_metadata or parameters.get(
         "mdai_no_fixing_metadata", False
     )
