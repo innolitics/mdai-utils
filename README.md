@@ -34,14 +34,17 @@ python -m mdai_utils.upload_annotation_slice \
 
 ## Upload 3D segmentations
 
-MDai works with dicoms, and use the SOPInstanceUID as the key to match slices.
-Your algorithm might work with 3D volumes, (.nrrd, .nii.gz, etc). You can convert the an input dicom_folder to a 3D volume, and also store the mapping between the new volume indices and the original dicom file, with its SOPInstanceUID.
+MD.ai works with dicoms, and use the SOPInstanceUID as the key to match slices.
+Your algorithm might work with 3D volumes, (.nrrd, .nii.gz, etc). You can convert
+an input dicom_folder to a 3D volume, and also store the mapping between the new
+volume indices and the original dicom file, with its SOPInstanceUID.
 
 ```bash
 python -m mdai_utils.dicom_to_volume -i ./tests/fixtures/humanct_0002_1000_1004 -o /tmp/humanct_0002_1000_1004.nrrd
 ```
 
-Parallel to the output image location, a `{image_filename}_SOPInstanceUIDs.json` will be saved with the slice
+Parallel to the output image location, a `{image_filename}_SOPInstanceUIDs.json`
+will be saved with the slice
 mappings.
 
 If we have a 3D volume segmentation we want to upload, use the mappings:
