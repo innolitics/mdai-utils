@@ -11,5 +11,6 @@
     "mdai_no_fixing_metadata": false,
     "labels": [
         "mylabel"
-    ]
+    ],
+    "create_volumes": true
 }

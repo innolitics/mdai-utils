@@ -143,6 +143,190 @@ def match_folder_to_json_file(
     return Path(input_path) / folder_match[0] if folder_match else None
 
 
+def get_dicom_names_ordered_and_metadata(dicom_dir):
+    """
+    Read the dicom files in a folder.
+    Return a list of tuples (filename, sop_instance_uid) ordered by z position.
+    """
+    io = itk.GDCMSeriesFileNames.New()  # pyright: ignore[reportGeneralTypeIssues]
+    io.AddSeriesRestriction("0008|0021")
+    io.SetUseSeriesDetails(True)
+    io.SetDirectory(str(dicom_dir))
+    io.Update()
+
+    series_uids = io.GetSeriesUIDs()
+
+    if len(series_uids) == 0:
+        raise ValueError(f"Found no series in folder: {dicom_dir}")
+    elif len(series_uids) > 1:
+        raise ValueError(f"Found more than one series in the same folder: {dicom_dir}")
+    series_id = series_uids[0]
+    # Ordered by z position
+    dicom_names_ordered = io.GetFileNames(series_id)
+    # Get also SOPInstanceUID for each file
+
+    # Create an instance of GDCMImageIO
+    gdcm_io = itk.GDCMImageIO.New()  # pyright: ignore[reportGeneralTypeIssues]
+    gdcm_io.LoadPrivateTagsOn()
+
+    # Get SOPInstanceUID for each file
+    dicom_names_with_uid_ordered = []
+    metadict_volume = {}
+    for i, dicom_name in enumerate(dicom_names_ordered):
+        gdcm_io.SetFileName(dicom_name)
+        gdcm_io.ReadImageInformation()
+        if i == 0:
+            reader = (
+                itk.ImageFileReader.New(  # pyright: ignore[reportGeneralTypeIssues]
+                    FileName=dicom_names_ordered[0], ImageIO=gdcm_io
+                )
+            )
+            reader.Update()
+            metadict = reader.GetMetaDataDictionary()
+            tagkeys = metadict.GetKeys()
+            for tagkey in tagkeys:
+                if (
+                    tagkey == "ITK_original_direction"
+                    or tagkey == "ITK_original_spacing"
+                ):
+                    continue
+                tagvalue = metadict[tagkey]
+                metadict_volume[tagkey] = tagvalue
+
+        _, sop_instance_uid = gdcm_io.GetValueFromTag(
+            "0008|0018", ""
+        )  # Tag for SOPInstanceUID
+        dicom_names_with_uid_ordered.append((dicom_name, sop_instance_uid))
+
+    # Add to the metadict_volume a new key: "slices", a dict with key SOPInstanceUID
+    # And values:  a new dict with index, and filename
+    slices_dict = {}
+    for i, (dicom_name, sop_instance_uid) in enumerate(dicom_names_with_uid_ordered):
+        slices_dict[sop_instance_uid] = {"index": i, "filename": str(dicom_name)}
+    metadict_volume["slices"] = slices_dict
+
+    return dicom_names_with_uid_ordered, metadict_volume
+
+
+def merge_slices_into3D(
+    pair_data_json_file, labels, output_path_mask_3d, output_path_grayscale_3d=None
+):
+    """
+    PRECONDITION: pair_data_json_file contains a list of slices of paired data:
+        image (dicom) and label (mask in nifti format)
+    We want to read all dicoms as a 3D volume, and merge all nifti masks into a single 3D mask,
+    with the same shape as the dicom volume.
+    """
+
+    with open(pair_data_json_file) as f:
+        pair_data = json.load(f)
+
+    if len(pair_data) == 0:
+        raise ValueError(f"pair_data_json_file is empty: {pair_data_json_file}")
+
+    # We want to group all the slices sharing same StudyInstanceUID and SeriesInstanceUID
+    pair_data_grouped = {}
+    for slice in pair_data:
+        hash_id = slice["study__series__sop_ids"]
+        study_id, series_id, sop_id = hash_id.split("__")
+        if study_id not in pair_data_grouped:
+            pair_data_grouped[study_id] = {}
+        if series_id not in pair_data_grouped[study_id]:
+            pair_data_grouped[study_id][series_id] = []
+        slice_with_sop_id = slice.copy()
+        slice_with_sop_id["sop_id"] = sop_id
+        pair_data_grouped[study_id][series_id].append(slice_with_sop_id)
+
+    # About the ordering...
+    # We are going to read the original dicom files with GDCM via itk
+    for study_id, series_dict in pair_data_grouped.items():
+        for series_id, slices in series_dict.items():
+            # Read the dicom files
+            dicom_dir = Path(slices[0]["image"]).parent
+            (
+                dicom_names_with_uid_ordered,
+                metadict_volume,
+            ) = get_dicom_names_ordered_and_metadata(dicom_dir)
+
+            # Read the dicom files with itk SeriesReader
+            filenames_ordered = [name for name, _ in dicom_names_with_uid_ordered]
+            reader = (
+                itk.ImageSeriesReader.New(  # pyright: ignore[reportGeneralTypeIssues]
+                    FileNames=filenames_ordered, ForceOrthogonalDirection=False
+                )
+            )
+            reader.Update()
+            dicom_volume = reader.GetOutput()
+            if output_path_grayscale_3d is not None:
+                output_grayscale_parent_folder = (
+                    Path(output_path_grayscale_3d) / study_id / series_id
+                )
+                output_grayscale_parent_folder.mkdir(parents=True, exist_ok=True)
+                output_dicom_volume_path = (
+                    output_grayscale_parent_folder / "image.nii.gz"
+                )
+                itk.imwrite(dicom_volume, output_dicom_volume_path)
+                # Save the metadata
+                metadict_volume_output_path = (
+                    output_grayscale_parent_folder / "volume_metadata.json"
+                )
+                with open(metadict_volume_output_path, "w") as f:
+                    json.dump(metadict_volume, f, indent=2)
+
+            # Ok, now we have the dicom volume and the mapping for ordered SOPInstanceUID
+            # We now need to create a 3D mask with the same shape as the dicom volume
+            # And populate it with the masks from the slices, after ordering them using the SOPInstanceUID order from the dicom_named_ordered
+
+            ordered_sop_ids = [sop_id for _, sop_id in dicom_names_with_uid_ordered]
+
+            # Create the 3D mask
+            output_mask_parent_folder = Path(output_path_mask_3d) / study_id / series_id
+            output_mask_parent_folder.mkdir(parents=True, exist_ok=True)
+            for label in labels:
+                label_volume_np = np.zeros(dicom_volume.shape, dtype=np.uint8)
+                for slice in slices:
+                    # Read the mask
+                    mask_path = slice.get(label)
+                    if mask_path is None:
+                        raise ValueError(
+                            f"Could not find label {label} in slice {slice}"
+                        )
+                    label_image = itk.imread(mask_path)
+                    # Assert image is 3D.
+                    if label_image.GetImageDimension() != 3:
+                        raise ValueError(
+                            f"Expected that the mask is a 3D image, with Z=1 slice, found {label_image.GetImageDimension()}"
+                        )
+                    # Get the SOPInstanceUID
+                    hash_id = slice["study__series__sop_ids"]
+                    _, _, sop_id = hash_id.split("__")
+                    # Get the index of the SOPInstanceUID in the ordered list
+                    sop_index = ordered_sop_ids.index(sop_id)
+                    label_image_np = itk.array_from_image(
+                        label_image
+                    )  # The label is Z=1, Y, X
+                    # Populate the 3D mask slice
+                    label_volume_np[sop_index] = label_image_np.squeeze()
+
+                # Convert to itk image
+                label_volume = itk.image_from_array(label_volume_np)
+                label_volume.SetOrigin(dicom_volume.GetOrigin())
+                label_volume.SetSpacing(dicom_volume.GetSpacing())
+                label_volume.SetDirection(dicom_volume.GetDirection())
+
+                # Check label and image have the same shape
+                label_volume_size = np.array(label_volume.shape)
+                image_volume_size = np.array(dicom_volume.shape)
+                if not np.all(label_volume_size == image_volume_size):
+                    raise ValueError(
+                        f"Label and image have different shapes: {label_volume_size} != {image_volume_size}"
+                    )
+
+                # Write the label volume
+                output_mask_path = output_mask_parent_folder / f"{label}.nii.gz"
+                itk.imwrite(label_volume, output_mask_path)
+
+
 def main(args):
     print(args)
 
@@ -172,6 +356,7 @@ def main(args):
         "mdai_no_fixing_metadata", False
     )
     labels = args.labels or parameters.get("labels", [])
+    create_volumes = args.create_volumes or parameters.get("create_volumes", False)
 
     mdai_label_ids = bidict(parameters.get("mdai_label_ids", {}))
     if labels:
@@ -246,6 +431,7 @@ def main(args):
         sep = "__"
         hash_id = sep.join(hash_)
         pair_data_entry = {}
+        pair_data_entry["study__series__sop_ids"] = hash_id
 
         raw_slice_image = None
         if not no_fixing_metadata:
@@ -306,6 +492,20 @@ def main(args):
         json.dump(pair_data, f, indent=2)
 
     print(f"pair_data_folder: {labels_parent_folder}")
+
+    if create_volumes:
+        pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
+        out_path_masks_3d = Path(labels_parent_folder) / "volumes"
+        out_path_masks_3d.mkdir(parents=True, exist_ok=True)
+        # Create the volumes in the original data downloaded by md.ai
+        # The structure is {study_id}/{series_id}/image.dcm.
+        # We add the 3d nifti volume and the metadata in that folder.
+        out_path_grayscale_3d = None
+        if not no_fixing_metadata and download_dicoms:
+            out_path_grayscale_3d = Path(match_folder) if match_folder else None
+        merge_slices_into3D(
+            pair_data_json_file, labels, out_path_masks_3d, out_path_grayscale_3d
+        )
 
 
 def get_download_parser():
@@ -369,6 +569,12 @@ def get_download_parser():
         type=str,
         default=[],
         help="Labels to process. If none is set, all labels found will be processed.",
+    )
+
+    parser.add_argument(
+        "--create_volumes",
+        action="store_true",
+        help="The dataset is 3D, and we want to merge all slices and dicoms into 3D volumes.",
     )
 
     parser.add_argument(
