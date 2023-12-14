@@ -4,7 +4,7 @@ Utility functions for MD.ai. Download and upload 2D and 3D segmentation images.
 
 ## Download data
 
-- Download all data, dicoms and annotations.
+- Download all data: dicoms and annotations.
 
 ```bash
 python -m mdai_utils.download_annotations \
@@ -13,14 +13,54 @@ python -m mdai_utils.download_annotations \
 --download_dicoms
 ```
 
-Once dicoms are downloaded locally, just download annotations. The annotations
-coming from MD.ai are json files. They will be stored in `./data`:
+Dicoms will be downloaded with the default md.ai structure:
 
-```bash
-python -m mdai_utils.download_annotations \
- --parameters myparameters.json \
- -o ./data
+```md
+- data/mdai_uab_project_L1NprBvP_images_dataset_D_odXMLm_2023-12-13-152228/
+    - 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421/
+      - 1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453/
+            1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414630768.dcm
+            1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414645741.dcm
+            1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414662833.dcm
+            1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414677861.dcm
+            1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414694890.dcm
 ```
+
+If the option `--create_volumes` is added (to cli or the parameters file), a 3D
+image will be generated in parallel to the `.dcm` files:
+
+```md
+            image.nii.gz
+            volume_metadata.json
+```
+
+The annotations/segmentations from md.ai are stored in json file.
+
+```md
+./data/mdai_uab_project_L1NprBvP_annotations_dataset_D_odXMLm_labelgroup_G_2Jy2yZ_2023-12-13-152213.json
+```
+and the masks/images are stored in a folder:
+
+```md
+./data/mdai_uab_project_L1NprBvP_annotations_dataset_D_odXMLm_labelgroup_G_2Jy2yZ_2023-12-13-152213_segmentations_2023-12-14-114011/
+```
+
+with structure:
+
+```md
+mylabel__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414630768.nii.gz
+mylabel__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414645741.nii.gz
+mylabel__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414662833.nii.gz
+mylabel__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414677861.nii.gz
+mylabel__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286421__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610384286453__1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414694890.nii.gz
+pair_data.json
+volumes/ # Only generated with --create_volumes option
+```
+
+---
+
+Once dicoms are downloaded locally, and they are not changed in md.ai, do not
+pass the --download_dicoms option to avoid re-downloading them.
 
 ## Upload 2D segmentations
 
