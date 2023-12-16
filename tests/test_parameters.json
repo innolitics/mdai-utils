@@ -12,5 +12,5 @@
     "labels": [
         "mylabel"
     ],
-    "create_volumes": true
+    "create_volumes": "mask"
 }

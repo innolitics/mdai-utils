@@ -26,6 +26,14 @@ Dicoms will be downloaded with the default md.ai structure:
             1.2.826.0.1.3680043.2.1125.1.75064541463040.2005072610414694890.dcm
 ```
 
+If the dataset is big, it will be split in parts. To merge all of them into one single folder:
+
+```bash
+python -m mdai_utils.merge_downloaded_parts \
+  --part_folder /path/mdai_uab_project_7YNdkRbz_images_dataset_D_vbqBVJ_2023-12-05-204930_part3of3 \
+  --remove_zip_files
+```
+
 If the option `--create_volumes` is added (to cli or the parameters file), a 3D
 image will be generated in parallel to the `.dcm` files:
 
