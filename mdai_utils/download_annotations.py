@@ -125,13 +125,15 @@ def get_last_json_file(
 
 def match_folder_to_json_file(
     json_file: Union[str, os.PathLike],
-    input_path: Union[str, os.PathLike] = DEFAULT_DATA_PATH,
+    folder_to_search: Union[str, os.PathLike],
     cutoff: float = 0.6,
 ) -> Union[os.PathLike, None]:
     # List of the folders in the input path
     json_file = str(json_file)
     folders = [
-        f for f in os.listdir(input_path) if os.path.isdir(os.path.join(input_path, f))
+        f
+        for f in os.listdir(folder_to_search)
+        if os.path.isdir(os.path.join(folder_to_search, f))
     ]
     # Match the one that is closer to the name of the json file:
     json_file_name = os.path.basename(json_file.replace("_annotations", "_images"))
@@ -140,7 +142,7 @@ def match_folder_to_json_file(
     )
     # Remove matches containing the word LABELS_FOLDER_IDENTIFIER
     folder_match = [f for f in folder_match if LABELS_FOLDER_IDENTIFIER not in f]
-    return Path(input_path) / folder_match[0] if folder_match else None
+    return Path(folder_to_search) / folder_match[0] if folder_match else None
 
 
 def get_dicom_names_ordered_and_metadata(dicom_dir):
@@ -401,7 +403,9 @@ def main(args):
     print(f"Last json file: {last_json_file}")
 
     # And get the folder where dicoms are, we use the match, because we are not always downloading data
-    match_folder = match_folder_to_json_file(last_json_file)
+    match_folder = match_folder_to_json_file(
+        last_json_file, folder_to_search=out_folder
+    )
     print(f"Matching data folder (dicoms): {match_folder or 'None'}")
 
     now = datetime.datetime.utcnow()
@@ -495,14 +499,16 @@ def main(args):
 
     if create_volumes:
         pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
-        out_path_masks_3d = Path(labels_parent_folder) / "volumes"
+        out_path_masks_3d = Path(labels_parent_folder) / "label_volumes"
         out_path_masks_3d.mkdir(parents=True, exist_ok=True)
         # Create the volumes in the original data downloaded by md.ai
         # The structure is {study_id}/{series_id}/image.dcm.
         # We add the 3d nifti volume and the metadata in that folder.
         out_path_grayscale_3d = None
         if not no_fixing_metadata and download_dicoms:
-            out_path_grayscale_3d = Path(match_folder) if match_folder else None
+            out_path_grayscale_3d = (
+                Path(match_folder) / "original_volumes" if match_folder else None
+            )
         merge_slices_into3D(
             pair_data_json_file, labels, out_path_masks_3d, out_path_grayscale_3d
         )
