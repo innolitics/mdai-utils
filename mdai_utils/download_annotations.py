@@ -126,6 +126,7 @@ def get_last_json_file(
 def match_folder_to_json_file(
     json_file: Union[str, os.PathLike],
     folder_to_search: Union[str, os.PathLike],
+    hint_str: str = "",
     cutoff: float = 0.6,
 ) -> Union[os.PathLike, None]:
     # List of the folders in the input path
@@ -142,6 +143,8 @@ def match_folder_to_json_file(
     )
     # Remove matches containing the word LABELS_FOLDER_IDENTIFIER
     folder_match = [f for f in folder_match if LABELS_FOLDER_IDENTIFIER not in f]
+    if hint_str:
+        folder_match = [f for f in folder_match if hint_str in f]
     return Path(folder_to_search) / folder_match[0] if folder_match else None
 
 
