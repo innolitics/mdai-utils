@@ -575,9 +575,18 @@ def main(args):
             label_file = labels_parent_folder / f"{label_name}__{hash_id}.nrrd"
             # Check we are not introducing two labels:
             if label_name in pair_data_entry:
-                raise ValueError(
-                    f"Found two labels with the same name {label_name} in the same slice {hash_id}. Please fix it in md.ai."
+                old_label_file = Path(pair_data_entry[label_name])
+                old_label_image = itk.imread(old_label_file)
+                old_label_image_np = itk.array_from_image(old_label_image)
+                # Merge both np arrays: old_label_image_np and slice_label_mask
+                merged_label_image_np = np.maximum(old_label_image_np, slice_label_mask)
+                # This is not always an error, there could be two unconected masks in the same slice.
+                logger.warning(
+                    f"Found labels with the same name {label_name} in the same slice {hash_id}. Merging into one."
                 )
+                # overwrite the label_image with the merged one
+                label_image = itk.image_from_array(merged_label_image_np)
+
             pair_data_entry[label_name] = str(label_file.resolve())
 
             if not no_fixing_metadata:
