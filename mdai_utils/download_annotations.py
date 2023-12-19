@@ -1,6 +1,7 @@
 import datetime
 import difflib
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Union
@@ -15,6 +16,8 @@ from mdai_utils.common import get_mdai_access_token
 
 DEFAULT_DATA_PATH: str = "./data"
 LABELS_FOLDER_IDENTIFIER: str = "segmentations"
+
+logger = logging.getLogger(__name__)
 
 
 def supersample_vertices(vertices, original_image_shape, upscale_factor):
@@ -413,7 +416,7 @@ def merge_slices_into3D(
 
 
 def main(args):
-    print(args)
+    logger.info(args)
 
     parameters = {}
     if args.parameters is not None:
@@ -495,13 +498,13 @@ def main(args):
     # Get the json for annotations
     last_json_file = get_last_json_file(out_folder, match_str=mdai_project_id)
 
-    print(f"Last json file: {last_json_file}")
+    logger.info(f"Last json file: {last_json_file}")
 
     # And get the folder where dicoms are, we use the match, because we are not always downloading data
     match_folder = match_folder_to_json_file(
-        last_json_file, folder_to_search=out_folder
+        last_json_file, folder_to_search=out_folder, hint_str=mdai_dataset_id
     )
-    print(f"Matching data folder (dicoms): {match_folder or 'None'}")
+    logger.info(f"Matching data folder (dicoms): {match_folder or 'None'}")
 
     now = datetime.datetime.utcnow()
     now_formatted_date = now.strftime("%Y-%m-%d-%H%M%S")
@@ -590,13 +593,13 @@ def main(args):
     with open(pair_data_json_file, "w") as f:
         json.dump(pair_data, f, indent=2)
 
-    print(f"pair_data_folder: {labels_parent_folder}")
+    logging.info(f"pair_data_folder: {labels_parent_folder}")
 
     if create_volumes is not None and create_volumes != "none":
         pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
         volumes_path = Path(volumes_path)
         if not volumes_path.exists():
-            print("Creating volumes_path: {}".format(volumes_path))
+            logging.info("Creating volumes_path: {}".format(volumes_path))
             volumes_path.mkdir(parents=True, exist_ok=True)
         process_grayscale = create_volumes in ["all", "grayscale"]
         if process_grayscale and match_folder is None:
