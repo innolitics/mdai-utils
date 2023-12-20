@@ -13,6 +13,7 @@ import numpy as np
 from bidict import bidict
 
 from mdai_utils.common import get_mdai_access_token
+from mdai_utils.log_utils import set_dual_logger
 
 DEFAULT_DATA_PATH: str = "./data"
 LABELS_FOLDER_IDENTIFIER: str = "segmentations"
@@ -720,6 +721,8 @@ See example in mdai_common/mdai_parameters_example.json.
 
 
 if __name__ == "__main__":
+    logger = set_dual_logger("download_annotaions", logs_dir="./logs", verbose=True)
+
     parser = get_download_parser()
     args = parser.parse_args()
     main(args)
