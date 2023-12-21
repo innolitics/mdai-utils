@@ -361,12 +361,19 @@ def merge_slices_into3D(
                 # Append metadata to the dicom_volume
                 itk_metadict = dicom_volume.GetMetaDataDictionary()
                 for tagkey, tagvalue in metadict_volume.items():
-                    itk_metadict.Set(
-                        str(tagkey),
-                        itk.MetaDataObject[  # pyright: ignore[reportGeneralTypeIssues]
-                            str
-                        ].New(MetaDataObjectValue=str(tagvalue)),
-                    )
+                    try:
+                        itk_metadict.Set(
+                            str(tagkey),
+                            itk.MetaDataObject[  # pyright: ignore[reportGeneralTypeIssues]
+                                str
+                            ].New(
+                                MetaDataObjectValue=str(tagvalue)
+                            ),
+                        )
+                    except TypeError as e:
+                        logger.error(
+                            f"Could not set/encode metadata with key {tagkey}. Skipping this key.\n{e}"
+                        )
                 # Write the volume
                 itk.imwrite(dicom_volume, output_dicom_volume_path)
                 # Save the metadata in json
@@ -447,6 +454,34 @@ def merge_slices_into3D(
                     json.dump(global_labels_dict, f, indent=2)
 
 
+def main_create_volumes(
+    labels_parent_folder,
+    volumes_path,
+    mdai_annotations,
+    labels,
+    create_volumes,
+    match_folder,
+):
+    pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
+    volumes_path = Path(volumes_path)
+    if not volumes_path.exists():
+        logging.info("Creating volumes_path: {}".format(volumes_path))
+        volumes_path.mkdir(parents=True, exist_ok=True)
+    process_grayscale = create_volumes in ["all", "grayscale"]
+    if process_grayscale and match_folder is None:
+        # Skip grayscale if we don't have the dicoms
+        process_grayscale = False
+
+    global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
+    merge_slices_into3D(
+        pair_data_json_file=pair_data_json_file,
+        labels=labels,
+        volumes_path=volumes_path,
+        process_grayscale=process_grayscale,
+        global_annotations_dict=global_annotations_dict,
+    )
+
+
 def main(args):
     logger.info(args)
 
@@ -515,6 +550,15 @@ def main(args):
         raise ValueError(
             "Please provide mdai_label_group_id with either the parameters file or the command line arguments."
         )
+    only_merge_3d_slices = args.only_merge_3d_slices or parameters.get(
+        "only_merge_3d_slices", False
+    )
+    already_existing_segmentation_folder = (
+        args.existing_segmentation_folder
+        or parameters.get("existing_segmentation_folder", None)
+    )
+    if only_merge_3d_slices:
+        no_download = True
 
     if not no_download:
         mdai_token = get_mdai_access_token(env_variable=mdai_token_env_variable)
@@ -544,7 +588,17 @@ def main(args):
         Path(out_folder)
         / f"{Path(last_json_file).stem}_{LABELS_FOLDER_IDENTIFIER}_{now_formatted_date}"
     )
-    labels_parent_folder.mkdir(parents=True, exist_ok=True)
+    if already_existing_segmentation_folder:
+        labels_parent_folder = Path(already_existing_segmentation_folder)
+        logging.info(
+            f"Using already existing segmentation folder: {labels_parent_folder}"
+        )
+        # Check that the folder exists
+        if not labels_parent_folder.exists():
+            raise FileNotFoundError(f"Could not find the folder {labels_parent_folder}")
+    else:
+        labels_parent_folder.mkdir(parents=True, exist_ok=True)
+
     pair_data_json_file = labels_parent_folder / "pair_data.json"
     pair_data = []
 
@@ -560,6 +614,17 @@ def main(args):
         "SOPInstanceUID",
     ]
     dh = mdai_annotations.groupby(hash_columns)
+
+    if only_merge_3d_slices:
+        main_create_volumes(
+            labels_parent_folder=labels_parent_folder,
+            volumes_path=volumes_path,
+            mdai_annotations=mdai_annotations,
+            labels=labels,
+            create_volumes=create_volumes,
+            match_folder=match_folder,
+        )
+        return
 
     for hash_, group in dh:
         sep = "__"
@@ -644,23 +709,13 @@ def main(args):
     logging.info(f"pair_data_folder: {labels_parent_folder}")
 
     if create_volumes is not None and create_volumes != "none":
-        pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
-        volumes_path = Path(volumes_path)
-        if not volumes_path.exists():
-            logging.info("Creating volumes_path: {}".format(volumes_path))
-            volumes_path.mkdir(parents=True, exist_ok=True)
-        process_grayscale = create_volumes in ["all", "grayscale"]
-        if process_grayscale and match_folder is None:
-            # Skip grayscale if we don't have the dicoms
-            process_grayscale = False
-
-        global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
-        merge_slices_into3D(
-            pair_data_json_file=pair_data_json_file,
-            labels=labels,
+        main_create_volumes(
+            labels_parent_folder=labels_parent_folder,
             volumes_path=volumes_path,
-            process_grayscale=process_grayscale,
-            global_annotations_dict=global_annotations_dict,
+            mdai_annotations=mdai_annotations,
+            labels=labels,
+            create_volumes=create_volumes,
+            match_folder=match_folder,
         )
 
 
@@ -743,6 +798,18 @@ def get_download_parser():
         help="""Path to the folder where to save the volumes.
         Required if --create_volumes is set.
         """,
+    )
+
+    parser.add_argument(
+        "--only_merge_3d_slices",
+        action="store_true",
+        help="If set, this will only merge the 3D slices into a volume, without downloading or processing dicoms or annotations.",
+    )
+    parser.add_argument(
+        "--existing_segmentation_folder",
+        type=str,
+        default=None,
+        help="Select the already existing segmentation folder. Only needed when --only_merge_3d_slices is set.",
     )
 
     parser.add_argument(
