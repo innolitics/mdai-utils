@@ -175,11 +175,29 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
 
     series_uids = io.GetSeriesUIDs()
 
+    selected_index = 0
     if len(series_uids) == 0:
         raise ValueError(f"Found no series in folder: {dicom_dir}")
     elif len(series_uids) > 1:
-        raise ValueError(f"Found more than one series in the same folder: {dicom_dir}")
-    series_id = series_uids[0]
+        error_msg = f"""Found more than one series in the same folder: {dicom_dir}.
+        Probably BUG in md.ai, which is merging different series_ids into one."""
+        num_files = []
+        for index, s in enumerate(series_uids):
+            files = io.GetFileNames(s)
+            len_files = len(files)
+            num_files.append(len_files)
+            error_msg += f"\nSeries {index}: {s} with {len_files} files"
+        # Select the index with more files:
+        selected_index = np.argmax(num_files)
+        error_msg += (
+            f"\nSelected series {selected_index} with {num_files[selected_index]} files"
+        )
+        error_msg += (
+            "\nPlease fix it in md.ai to avoid this warning and clean the dataset."
+        )
+        logger.error(error_msg)
+
+    series_id = series_uids[selected_index]
     # Ordered by z position
     dicom_names_ordered = io.GetFileNames(series_id)
     # Get also SOPInstanceUID for each file
