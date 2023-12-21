@@ -187,8 +187,10 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
             len_files = len(files)
             num_files.append(len_files)
             error_msg += f"\nSeries {index}: {s} with {len_files} files"
-        # Select the index with more files:
-        selected_index = np.argmax(num_files)
+        # Select the first index, if it contains less than 20 files, select the
+        # one with more files.
+        if num_files[0] < 20:
+            selected_index = np.argmax(num_files)
         error_msg += (
             f"\nSelected series {selected_index} with {num_files[selected_index]} files"
         )
