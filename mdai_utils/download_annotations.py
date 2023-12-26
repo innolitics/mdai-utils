@@ -14,6 +14,7 @@ from bidict import bidict
 
 from mdai_utils.common import get_mdai_access_token
 from mdai_utils.log_utils import set_dual_logger
+from mdai_utils.merge_downloaded_parts import merge_downloaded_parts
 
 DEFAULT_DATA_PATH: str = "./data"
 LABELS_FOLDER_IDENTIFIER: str = "segmentations"
@@ -570,6 +571,20 @@ def main(args):
             path=str(out_folder),
             annotations_only=mdai_annotations_only,
         )
+        if not mdai_annotations_only:
+            logger.info("Downloaded dicoms and annotations. Merging all parts...")
+            _part_common = f"project_{mdai_project_id}_images_dataset_{mdai_dataset_id}"
+            part_folder = list(Path(out_folder).glob(f"*{_part_common}*part_*of*"))
+            if len(part_folder) == 0:
+                logger.info(
+                    f"Could not find any part folder in {out_folder} matching {_part_common}. Maybe the dataset is small enough."
+                )
+            else:
+                merge_downloaded_parts(
+                    part_folder=part_folder[0],
+                    remove_zip_part_file=False,
+                )
+                logger.info("Done merging all parts. zip files were not removed.")
 
     # Get the json for annotations
     last_json_file = get_last_json_file(out_folder, match_str=mdai_dataset_id)
@@ -826,7 +841,7 @@ See example in mdai_common/mdai_parameters_example.json.
 
 
 if __name__ == "__main__":
-    logger = set_dual_logger("download_annotaions", logs_dir="./logs", verbose=True)
+    logger = set_dual_logger("download_annotations", logs_dir="./logs", verbose=True)
 
     parser = get_download_parser()
     args = parser.parse_args()
