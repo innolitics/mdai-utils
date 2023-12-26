@@ -183,18 +183,36 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
         error_msg = f"""Found more than one series in the same folder: {dicom_dir}.
         Probably BUG in md.ai, which is merging different series_ids into one."""
         num_files = []
+        sops_per_series = []
         for index, s in enumerate(series_uids):
             files = io.GetFileNames(s)
+            sops = [Path(f).stem for f in files]
+            sops_per_series.append(sops)
             len_files = len(files)
             num_files.append(len_files)
-            error_msg += f"\nSeries {index}: {s} with {len_files} files"
+            error_msg += f"\nSeries {index}: {s} with {len_files} files:\n{sops}"
         # Select the first index, if it contains less than 20 files, select the
         # one with more files.
         if num_files[0] < 20:
             selected_index = np.argmax(num_files)
+        # Handle the case where there are two series with more than 20 files each
+        if all([n >= 20 for n in num_files]):
+            # Read the series without the SeriesRestriction
+            io = (
+                itk.GDCMSeriesFileNames.New()  # pyright: ignore[reportGeneralTypeIssues]
+            )
+            io.SetUseSeriesDetails(True)
+            io.SetDirectory(str(dicom_dir))
+            io.Update()
+            series_uids = io.GetSeriesUIDs()
+            error_msg += f"\nFound more than one series with more than 20 files each {num_files}. Reading the series without date distinction, merging into one series."
+            selected_index = 0
+            num_files = [io.GetFileNames(s) for s in series_uids]
+
         error_msg += (
             f"\nSelected series {selected_index} with {num_files[selected_index]} files"
         )
+
         error_msg += (
             "\nPlease fix it in md.ai to avoid this warning and clean the dataset."
         )
