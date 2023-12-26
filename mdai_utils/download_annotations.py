@@ -207,7 +207,9 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
             series_uids = io.GetSeriesUIDs()
             error_msg += f"\nFound more than one series with more than 20 files each {num_files}. Reading the series without date distinction, merging into one series."
             selected_index = 0
-            num_files = [io.GetFileNames(s) for s in series_uids]
+            files = io.GetFileNames(series_uids[0])
+            num_files = [len(files)]
+            sops_per_series = [Path(f).stem for f in files]
 
         error_msg += (
             f"\nSelected series {selected_index} with {num_files[selected_index]} files"
