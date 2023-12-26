@@ -201,7 +201,7 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
             io = (
                 itk.GDCMSeriesFileNames.New()  # pyright: ignore[reportGeneralTypeIssues]
             )
-            io.SetUseSeriesDetails(True)
+            io.SetUseSeriesDetails(False)
             io.SetDirectory(str(dicom_dir))
             io.Update()
             series_uids = io.GetSeriesUIDs()
