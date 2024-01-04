@@ -303,6 +303,30 @@ def get_global_annotations(mdai_annotations):
     return global_annotations_dict, study_annotations, series_annotations
 
 
+def populate_global_labels_dict(global_annotations_dict, study_id, series_id):
+    global_labels_dict = {}
+    if not global_annotations_dict:
+        return global_labels_dict
+
+    if "mdai_label_group_ids" in global_annotations_dict:
+        global_labels_dict["mdai_label_group_ids"] = global_annotations_dict[
+            "mdai_label_group_ids"
+        ]
+    if study_id in global_annotations_dict:
+        # Check for study labels first:
+        if "study_labels" in global_annotations_dict[study_id]:
+            for label in global_annotations_dict[study_id]["study_labels"]:
+                global_labels_dict.setdefault(label, 0)
+                global_labels_dict[label] += 1
+        # Check for series labels:
+        if series_id in global_annotations_dict[study_id]:
+            for label in global_annotations_dict[study_id][series_id]:
+                global_labels_dict.setdefault(label, 0)
+                global_labels_dict[label] += 1
+
+    return global_labels_dict
+
+
 def merge_slices_into3D(
     pair_data_json_file,
     labels,
@@ -348,23 +372,11 @@ def merge_slices_into3D(
                 metadict_volume,
             ) = get_dicom_names_ordered_and_metadata(dicom_dir)
 
-            global_labels_dict = {}
-            if global_annotations_dict:
-                if "mdai_label_group_ids" in global_annotations_dict:
-                    global_labels_dict[
-                        "mdai_label_group_ids"
-                    ] = global_annotations_dict["mdai_label_group_ids"]
-                if study_id in global_annotations_dict:
-                    # Check for study labels first:
-                    if "study_labels" in global_annotations_dict[study_id]:
-                        for label in global_annotations_dict[study_id]["study_labels"]:
-                            global_labels_dict.setdefault(label, 0)
-                            global_labels_dict[label] += 1
-                    # Check for series labels:
-                    if series_id in global_annotations_dict[study_id]:
-                        for label in global_annotations_dict[study_id][series_id]:
-                            global_labels_dict.setdefault(label, 0)
-                            global_labels_dict[label] += 1
+            global_labels_dict = populate_global_labels_dict(
+                global_annotations_dict=global_annotations_dict,
+                study_id=study_id,
+                series_id=series_id,
+            )
 
             # Read the dicom files with itk SeriesReader
             filenames_ordered = [name for name, _ in dicom_names_with_uid_ordered]
@@ -531,6 +543,9 @@ def main(args):
     no_fixing_metadata = args.no_fixing_metadata or parameters.get(
         "mdai_no_fixing_metadata", False
     )
+    series_only_annotations = args.series_only_annotations or parameters.get(
+        "series_only_annotations", False
+    )
     labels = args.labels or parameters.get("labels", [])
     create_volumes = args.create_volumes or parameters.get("create_volumes", None)
     volumes_path = args.volumes_path or parameters.get("volumes_path", None)
@@ -643,12 +658,53 @@ def main(args):
     # mdai_labels = result["labels"]
     # mdai_studies = result["studies"]
     mdai_annotations = result["annotations"]
-    hash_columns = [
-        "StudyInstanceUID",
-        "SeriesInstanceUID",
-        "SOPInstanceUID",
-    ]
-    dh = mdai_annotations.groupby(hash_columns)
+    try:
+        hash_columns = [
+            "StudyInstanceUID",
+            "SeriesInstanceUID",
+            "SOPInstanceUID",
+        ]
+        dh = mdai_annotations.groupby(hash_columns)
+    except KeyError:
+        logger.warning("Annotations do not have SOPInstanceUID. Using only two columns")
+        hash_columns = [
+            "StudyInstanceUID",
+            "SeriesInstanceUID",
+        ]
+        dh = mdai_annotations.groupby(hash_columns)
+
+    if series_only_annotations and volumes_path is not None:
+        logger.info(
+            f"series_only_annotations is set to True. Creating global_labels_$label_group_id.json files in {volumes_path} for each serie and study already existing from other group labels."
+        )
+        global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
+        for hash_, group in dh:
+            if len(hash_) != 2:
+                raise ValueError(
+                    f"Found more than two columns in the hash: {hash_}. Expected {hash_columns} without SOPInstanceUID"
+                )
+            study_id, series_id = hash_
+            global_labels_dict = populate_global_labels_dict(
+                global_annotations_dict=global_annotations_dict,
+                study_id=str(study_id),
+                series_id=str(series_id),
+            )
+
+            # Write
+            output_case_parent_folder = Path(volumes_path) / study_id / series_id
+            if not output_case_parent_folder.exists():
+                logger.debug(f"Skipping folder: {output_case_parent_folder}")
+                continue
+
+            label_group_id = global_labels_dict["mdai_label_group_ids"][0]
+            metadict_label_volume_output_path = (
+                output_case_parent_folder / f"global_labels_{label_group_id}.json"
+            )
+            with open(metadict_label_volume_output_path, "w") as f:
+                json.dump(global_labels_dict, f, indent=2)
+
+        logger.info("Done writing global_labels_$label_group_id.json files.")
+        return
 
     if only_merge_3d_slices:
         main_create_volumes(
@@ -845,6 +901,11 @@ def get_download_parser():
         type=str,
         default=None,
         help="Select the already existing segmentation folder. Only needed when --only_merge_3d_slices is set.",
+    )
+    parser.add_argument(
+        "--series_only_annotations",
+        action="store_true",
+        help="Set to true for label groups with no image data, only series and study level annotations",
     )
 
     parser.add_argument(
