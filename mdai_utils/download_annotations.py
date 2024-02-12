@@ -262,9 +262,9 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
     sop_instances_uids_ordered_by_index = [
         uid for _, uid in dicom_names_with_uid_ordered
     ]
-    metadict_volume[
-        "sop_instances_uids_ordered_by_index"
-    ] = sop_instances_uids_ordered_by_index
+    metadict_volume["sop_instances_uids_ordered_by_index"] = (
+        sop_instances_uids_ordered_by_index
+    )
 
     return dicom_names_with_uid_ordered, metadict_volume
 
