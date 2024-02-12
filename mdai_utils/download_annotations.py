@@ -272,8 +272,13 @@ def get_dicom_names_ordered_and_metadata(dicom_dir):
 def get_global_annotations(mdai_annotations):
     """
     Get the series annotations from the mdai_annotations dataframe.
-    Transform into a dictionary with key: study__series
-    and values: list of labels in that series
+    Transform into a dictionary:
+        {
+                study_id: {
+                    study_labels: [label1, label2, ...],
+                    series_id : [label1, label2, ...],
+                }
+        }
     """
     # Get the series metadata
     with_study_scope = mdai_annotations["scope"] == "STUDY"
@@ -327,8 +332,88 @@ def populate_global_labels_dict(global_annotations_dict, study_id, series_id):
     return global_labels_dict
 
 
+def write_global_labels_dict(global_labels_dict, output_case_parent_folder):
+    label_group_id = global_labels_dict["mdai_label_group_ids"][0]
+    metadict_label_volume_output_path = (
+        output_case_parent_folder / f"global_labels_{label_group_id}.json"
+    )
+    with open(metadict_label_volume_output_path, "w") as f:
+        json.dump(global_labels_dict, f, indent=2)
+
+
+def dicom_files_to_volume(
+    dicom_names_with_uid_ordered,
+    metadict_volume,
+    output_case_parent_folder="",
+):
+    """
+    Read the dicom files and optionally write the volume to a nrrd, or any volumetric format.
+    Args:
+    dicom_names_with_uid_ordered: list of tuples (filename, sop_instance_uid) ordered by z position (from  @get_dicom_names_ordered_and_metadata)
+    metadict_volume: dictionary with the metadata of the volume (from @get_dicom_names_ordered_and_metadata)
+    output_case_parent_folder: str or Path, the folder where the volume will be written.
+
+    Returns the volume as an itk.Image
+    """
+    # Read the dicom files with itk SeriesReader
+    filenames_ordered = [name for name, _ in dicom_names_with_uid_ordered]
+    reader = itk.ImageSeriesReader.New(  # pyright: ignore[reportGeneralTypeIssues]
+        FileNames=filenames_ordered, ForceOrthogonalDirection=False
+    )
+    reader.Update()
+    dicom_volume = reader.GetOutput()
+
+    process_grayscale = True if output_case_parent_folder else False
+    assert Path(output_case_parent_folder).exists()
+    if process_grayscale:
+        output_dicom_volume_path = Path(output_case_parent_folder) / "image.nrrd"
+        # Append metadata to the dicom_volume
+        itk_metadict = dicom_volume.GetMetaDataDictionary()
+        for tagkey, tagvalue in metadict_volume.items():
+            try:
+                itk_metadict.Set(
+                    str(tagkey),
+                    itk.MetaDataObject[  # pyright: ignore[reportGeneralTypeIssues]
+                        str
+                    ].New(MetaDataObjectValue=str(tagvalue)),
+                )
+            except TypeError as e:
+                logger.error(
+                    f"Could not set/encode metadata with key {tagkey}. Skipping this key.\n{e}"
+                )
+        # Write the volume
+        itk.imwrite(dicom_volume, output_dicom_volume_path)
+        # Save the metadata in json
+        metadict_volume_output_path = (
+            Path(output_case_parent_folder) / "volume_metadata.json"
+        )
+        with open(metadict_volume_output_path, "w") as f:
+            json.dump(metadict_volume, f, indent=2)
+
+    return dicom_volume
+
+
+def group_pair_data_by_study_and_series(pair_data):
+    """
+    Group all the slices sharing same StudyInstanceUID and SeriesInstanceUID
+    """
+    pair_data_grouped = {}
+    for slice in pair_data:
+        hash_id = slice["study__series__sop_ids"]
+        study_id, series_id, sop_id = hash_id.split("__")
+        if study_id not in pair_data_grouped:
+            pair_data_grouped[study_id] = {}
+        if series_id not in pair_data_grouped[study_id]:
+            pair_data_grouped[study_id][series_id] = []
+        slice_with_sop_id = slice.copy()
+        slice_with_sop_id["sop_id"] = sop_id
+        pair_data_grouped[study_id][series_id].append(slice_with_sop_id)
+
+    return pair_data_grouped
+
+
 def merge_slices_into3D(
-    pair_data_json_file,
+    pair_data_grouped,
     labels,
     volumes_path,
     process_grayscale=False,
@@ -342,25 +427,6 @@ def merge_slices_into3D(
     global_annotation is used to write all SERIES and EXAM metadata from mdai into the volume metadata. See @get_global_annotations
     """
 
-    with open(pair_data_json_file) as f:
-        pair_data = json.load(f)
-
-    if len(pair_data) == 0:
-        raise ValueError(f"pair_data_json_file is empty: {pair_data_json_file}")
-
-    # We want to group all the slices sharing same StudyInstanceUID and SeriesInstanceUID
-    pair_data_grouped = {}
-    for slice in pair_data:
-        hash_id = slice["study__series__sop_ids"]
-        study_id, series_id, sop_id = hash_id.split("__")
-        if study_id not in pair_data_grouped:
-            pair_data_grouped[study_id] = {}
-        if series_id not in pair_data_grouped[study_id]:
-            pair_data_grouped[study_id][series_id] = []
-        slice_with_sop_id = slice.copy()
-        slice_with_sop_id["sop_id"] = sop_id
-        pair_data_grouped[study_id][series_id].append(slice_with_sop_id)
-
     # About the ordering...
     # We are going to read the original dicom files with GDCM via itk
     for study_id, series_dict in pair_data_grouped.items():
@@ -372,49 +438,19 @@ def merge_slices_into3D(
                 metadict_volume,
             ) = get_dicom_names_ordered_and_metadata(dicom_dir)
 
+            output_case_parent_folder = Path(volumes_path) / study_id / series_id
+            output_case_parent_folder.mkdir(parents=True, exist_ok=True)
+
+            dicom_volume = dicom_files_to_volume(
+                dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
+                metadict_volume=metadict_volume,
+                output_case_parent_folder=output_case_parent_folder,
+            )
             global_labels_dict = populate_global_labels_dict(
                 global_annotations_dict=global_annotations_dict,
                 study_id=study_id,
                 series_id=series_id,
             )
-
-            # Read the dicom files with itk SeriesReader
-            filenames_ordered = [name for name, _ in dicom_names_with_uid_ordered]
-            reader = (
-                itk.ImageSeriesReader.New(  # pyright: ignore[reportGeneralTypeIssues]
-                    FileNames=filenames_ordered, ForceOrthogonalDirection=False
-                )
-            )
-            reader.Update()
-            dicom_volume = reader.GetOutput()
-            output_case_parent_folder = Path(volumes_path) / study_id / series_id
-            output_case_parent_folder.mkdir(parents=True, exist_ok=True)
-            if process_grayscale:
-                output_dicom_volume_path = output_case_parent_folder / "image.nrrd"
-                # Append metadata to the dicom_volume
-                itk_metadict = dicom_volume.GetMetaDataDictionary()
-                for tagkey, tagvalue in metadict_volume.items():
-                    try:
-                        itk_metadict.Set(
-                            str(tagkey),
-                            itk.MetaDataObject[  # pyright: ignore[reportGeneralTypeIssues]
-                                str
-                            ].New(
-                                MetaDataObjectValue=str(tagvalue)
-                            ),
-                        )
-                    except TypeError as e:
-                        logger.error(
-                            f"Could not set/encode metadata with key {tagkey}. Skipping this key.\n{e}"
-                        )
-                # Write the volume
-                itk.imwrite(dicom_volume, output_dicom_volume_path)
-                # Save the metadata in json
-                metadict_volume_output_path = (
-                    output_case_parent_folder / "volume_metadata.json"
-                )
-                with open(metadict_volume_output_path, "w") as f:
-                    json.dump(metadict_volume, f, indent=2)
 
             # Ok, now we have the dicom volume and the mapping for ordered SOPInstanceUID
             # We now need to create a 3D mask with the same shape as the dicom volume
@@ -479,12 +515,7 @@ def merge_slices_into3D(
 
             # Also write a json with metadata (shared with all labels)
             if labels and global_labels_dict:
-                label_group_id = global_labels_dict["mdai_label_group_ids"][0]
-                metadict_label_volume_output_path = (
-                    output_case_parent_folder / f"global_labels_{label_group_id}.json"
-                )
-                with open(metadict_label_volume_output_path, "w") as f:
-                    json.dump(global_labels_dict, f, indent=2)
+                write_global_labels_dict(global_labels_dict, output_case_parent_folder)
 
 
 def main_create_volumes(
@@ -494,8 +525,16 @@ def main_create_volumes(
     labels,
     create_volumes,
     match_folder,
+    create_grayscale_volumes_if_global_annotation=False,
 ):
     pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
+    with open(pair_data_json_file) as f:
+        pair_data = json.load(f)
+    if len(pair_data) == 0:
+        raise ValueError(f"pair_data_json_file is empty: {pair_data_json_file}")
+
+    pair_data_grouped = group_pair_data_by_study_and_series(pair_data)
+
     volumes_path = Path(volumes_path)
     if not volumes_path.exists():
         logging.info("Creating volumes_path: {}".format(volumes_path))
@@ -507,12 +546,55 @@ def main_create_volumes(
 
     global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
     merge_slices_into3D(
-        pair_data_json_file=pair_data_json_file,
+        pair_data_grouped=pair_data_grouped,
         labels=labels,
         volumes_path=volumes_path,
         process_grayscale=process_grayscale,
         global_annotations_dict=global_annotations_dict,
     )
+
+    if create_grayscale_volumes_if_global_annotation:
+        # We will create the grayscale volume, even if there are no annotations
+        logger.info(
+            "Creating grayscale volume if global annotation is present at the series level"
+        )
+
+        for study_id, study_dict in global_annotations_dict.items():
+            if study_id == "mdai_label_group_ids":
+                continue
+            study_in_pair_data_grouped = study_id in pair_data_grouped
+            for series_id, series_dict in study_dict.items():
+                # Skip if the series is already on the pair data (it has mask annotations)
+                if (
+                    study_in_pair_data_grouped
+                    and series_id in pair_data_grouped[study_id]
+                ):
+                    continue
+                logger.info(
+                    f"Creating grayscale volume for study {study_id} and series {series_id}, which has global annotations."
+                )
+                output_case_parent_folder = Path(volumes_path) / study_id / series_id
+                output_case_parent_folder.mkdir(parents=True, exist_ok=True)
+
+                # Write global labels
+                global_labels_dict = populate_global_labels_dict(
+                    global_annotations_dict=global_annotations_dict,
+                    study_id=study_id,
+                    series_id=series_id,
+                )
+                write_global_labels_dict(global_labels_dict, output_case_parent_folder)
+
+                # Write the grayscale volume
+                dicom_dir = Path(match_folder) / study_id / series_id
+                (
+                    dicom_names_with_uid_ordered,
+                    metadict_volume,
+                ) = get_dicom_names_ordered_and_metadata(dicom_dir)
+                dicom_files_to_volume(
+                    dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
+                    metadict_volume=metadict_volume,
+                    output_case_parent_folder=output_case_parent_folder,
+                )
 
 
 def main(args):
@@ -548,6 +630,19 @@ def main(args):
     )
     labels = args.labels or parameters.get("labels", [])
     create_volumes = args.create_volumes or parameters.get("create_volumes", None)
+    create_grayscale_volumes_if_global_annotation = (
+        args.create_grayscale_volumes_if_global_annotation
+        or parameters.get("create_grayscale_volumes_if_global_annotation", False)
+    )
+    if create_volumes:
+        assert create_volumes in ["all", "grayscale", "mask", "none"]
+    if create_grayscale_volumes_if_global_annotation and create_volumes not in [
+        "all",
+        "grayscale",
+    ]:
+        raise ValueError(
+            "create_grayscale_volumes_if_global_annotation is only valid when create_volumes is set to 'all' or 'grayscale'"
+        )
     volumes_path = args.volumes_path or parameters.get("volumes_path", None)
     # Check create_volumes is valid:
     valid_create_volumes = ["all", "grayscale", "mask", "none", None]
@@ -673,11 +768,11 @@ def main(args):
         ]
         dh = mdai_annotations.groupby(hash_columns)
 
+    global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
     if series_only_annotations and volumes_path is not None:
         logger.info(
             f"series_only_annotations is set to True. Creating global_labels_$label_group_id.json files in {volumes_path} for each serie and study already existing from other group labels."
         )
-        global_annotations_dict, _, _ = get_global_annotations(mdai_annotations)
         for hash_, group in dh:
             if len(hash_) != 2:
                 raise ValueError(
@@ -714,6 +809,7 @@ def main(args):
             labels=labels,
             create_volumes=create_volumes,
             match_folder=match_folder,
+            create_grayscale_volumes_if_global_annotation=create_grayscale_volumes_if_global_annotation,
         )
         return
 
@@ -790,6 +886,7 @@ def main(args):
             itk.imwrite(label_image, str(label_file))
 
         # Check that pair_data_entry contains at least one label
+        # except if the option to create volumes for all the grayscale is set
         if len(pair_data_entry) < 3:
             continue
         pair_data.append(pair_data_entry)
@@ -807,6 +904,7 @@ def main(args):
             labels=labels,
             create_volumes=create_volumes,
             match_folder=match_folder,
+            create_grayscale_volumes_if_global_annotation=create_grayscale_volumes_if_global_annotation,
         )
 
 
@@ -878,6 +976,14 @@ def get_download_parser():
         type=str,
         default=None,
         help="""Create 3D volumes from dicoms. Set to : 'all', 'grayscale', 'masks', 'none' or None. Default: None.
+        Set --volumes_path to specify the folder where to save the volumes.
+        """,
+    )
+
+    parser.add_argument(
+        "--create_grayscale_volumes_if_global_annotation",
+        action="store_true",
+        help="""Create 3D grayscale volumes from dicoms, even if there are no annotations. Default: False.
         Set --volumes_path to specify the folder where to save the volumes.
         """,
     )
