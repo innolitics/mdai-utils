@@ -345,6 +345,7 @@ def dicom_files_to_volume(
     dicom_names_with_uid_ordered,
     metadict_volume,
     output_case_parent_folder="",
+    output_image_format="nrrd",
 ):
     """
     Read the dicom files and optionally write the volume to a nrrd, or any volumetric format.
@@ -366,7 +367,9 @@ def dicom_files_to_volume(
     process_grayscale = True if output_case_parent_folder else False
     assert Path(output_case_parent_folder).exists()
     if process_grayscale:
-        output_dicom_volume_path = Path(output_case_parent_folder) / "image.nrrd"
+        output_dicom_volume_path = (
+            Path(output_case_parent_folder) / f"image.{output_image_format}"
+        )
         # Append metadata to the dicom_volume
         itk_metadict = dicom_volume.GetMetaDataDictionary()
         for tagkey, tagvalue in metadict_volume.items():
@@ -418,6 +421,7 @@ def merge_slices_into3D(
     volumes_path,
     process_grayscale=False,
     global_annotations_dict={},
+    output_image_format="nrrd",
 ):
     """
     PRECONDITION: pair_data_json_file contains a list of slices of paired data:
@@ -445,6 +449,7 @@ def merge_slices_into3D(
                 dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
                 metadict_volume=metadict_volume,
                 output_case_parent_folder=output_case_parent_folder,
+                output_image_format=output_image_format,
             )
             global_labels_dict = populate_global_labels_dict(
                 global_annotations_dict=global_annotations_dict,
@@ -510,7 +515,9 @@ def merge_slices_into3D(
                     )
 
                 # Write the label volume
-                output_mask_path = output_case_parent_folder / f"{label}.nrrd"
+                output_mask_path = (
+                    output_case_parent_folder / f"{label}.{output_image_format}"
+                )
                 itk.imwrite(label_volume, output_mask_path)
 
             # Also write a json with metadata (shared with all labels)
@@ -526,6 +533,7 @@ def main_create_volumes(
     create_volumes,
     match_folder,
     create_grayscale_volumes_if_global_annotation=False,
+    output_image_format="nrrd",
 ):
     pair_data_json_file = Path(labels_parent_folder) / "pair_data.json"
     with open(pair_data_json_file) as f:
@@ -551,6 +559,7 @@ def main_create_volumes(
         volumes_path=volumes_path,
         process_grayscale=process_grayscale,
         global_annotations_dict=global_annotations_dict,
+        output_image_format=output_image_format,
     )
 
     if create_grayscale_volumes_if_global_annotation:
@@ -594,6 +603,7 @@ def main_create_volumes(
                     dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
                     metadict_volume=metadict_volume,
                     output_case_parent_folder=output_case_parent_folder,
+                    output_image_format=output_image_format,
                 )
 
 
@@ -644,6 +654,9 @@ def main(args):
             "create_grayscale_volumes_if_global_annotation is only valid when create_volumes is set to 'all' or 'grayscale'"
         )
     volumes_path = args.volumes_path or parameters.get("volumes_path", None)
+    output_image_format = args.output_image_format or parameters.get(
+        "output_image_format", "nrrd"
+    )
     # Check create_volumes is valid:
     valid_create_volumes = ["all", "grayscale", "mask", "none", None]
     if create_volumes not in valid_create_volumes:
@@ -810,6 +823,7 @@ def main(args):
             create_volumes=create_volumes,
             match_folder=match_folder,
             create_grayscale_volumes_if_global_annotation=create_grayscale_volumes_if_global_annotation,
+            output_image_format=output_image_format,
         )
         return
 
@@ -905,6 +919,7 @@ def main(args):
             create_volumes=create_volumes,
             match_folder=match_folder,
             create_grayscale_volumes_if_global_annotation=create_grayscale_volumes_if_global_annotation,
+            output_image_format=output_image_format,
         )
 
 
@@ -995,6 +1010,13 @@ def get_download_parser():
         help="""Path to the folder where to save the volumes.
         Required if --create_volumes is set.
         """,
+    )
+
+    parser.add_argument(
+        "--output_image_format",
+        type=str,
+        default="nrrd",
+        help="""Output image format for the volumes.""",
     )
 
     parser.add_argument(
