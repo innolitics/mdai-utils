@@ -1015,7 +1015,7 @@ def get_download_parser():
     parser.add_argument(
         "--output_image_format",
         type=str,
-        default="nrrd",
+        default=None,
         help="""Output image format for the volumes.""",
     )
 
