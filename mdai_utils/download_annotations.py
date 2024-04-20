@@ -22,6 +22,57 @@ LABELS_FOLDER_IDENTIFIER: str = "segmentations"
 logger = logging.getLogger(__name__)
 
 
+def download_dicoms_into_volumes(
+    project_id,
+    dataset_id,
+    out_folder,
+    volumes_path,
+    env_variable,
+    domain="md.ai",
+    output_image_format="nrrd",
+):
+    mdai_token = get_mdai_access_token(env_variable=env_variable)
+    mdai_client = mdai.Client(domain=domain, access_token=mdai_token)
+    p = mdai_client.project(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        path=str(out_folder),
+        annotations_only=False,
+    )
+    if p is None:
+        raise ValueError(f"Could not find project {project_id} in md.ai")
+    match_folder = Path(p.images_dir or "None")
+    mdai_client.download_dicom_metadata(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        format="json",
+        path=str(out_folder),
+    )
+    logger.info(f"Images dir (dicoms): {match_folder or 'None'}")
+    print("Finished downloading dicoms and metadata. Converting to volumes...")
+
+    # Iterate over the data folder, and create volumes for each study and series
+    for study_folder in match_folder.iterdir():
+        print(f"Processing study {study_folder.name}")
+        for series_folder in study_folder.iterdir():
+            print(f"  series: {series_folder.name}")
+            dicom_dir = series_folder
+            (
+                dicom_names_with_uid_ordered,
+                metadict_volume,
+            ) = get_dicom_names_ordered_and_metadata(dicom_dir)
+            output_case_parent_folder = (
+                Path(volumes_path) / study_folder.name / series_folder.name
+            )
+            output_case_parent_folder.mkdir(parents=True, exist_ok=True)
+            dicom_files_to_volume(
+                dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
+                metadict_volume=metadict_volume,
+                output_case_parent_folder=output_case_parent_folder,
+                output_image_format=output_image_format,
+            )
+
+
 def supersample_vertices(vertices, original_image_shape, upscale_factor):
     """
     Upscale the vertices by a factor of upscale_factor
@@ -344,7 +395,7 @@ def write_global_labels_dict(global_labels_dict, output_case_parent_folder):
 def dicom_files_to_volume(
     dicom_names_with_uid_ordered,
     metadict_volume,
-    output_case_parent_folder="",
+    output_case_parent_folder: Union[str, os.PathLike] = "",
     output_image_format="nrrd",
 ):
     """
@@ -448,7 +499,7 @@ def merge_slices_into3D(
             dicom_volume = dicom_files_to_volume(
                 dicom_names_with_uid_ordered=dicom_names_with_uid_ordered,
                 metadict_volume=metadict_volume,
-                output_case_parent_folder=output_case_parent_folder,
+                output_case_parent_folder=str(output_case_parent_folder),
                 output_image_format=output_image_format,
             )
             global_labels_dict = populate_global_labels_dict(
@@ -657,6 +708,11 @@ def main(args):
     output_image_format = args.output_image_format or parameters.get(
         "output_image_format", "nrrd"
     )
+
+    download_all_no_labels = args.download_all_no_labels or parameters.get(
+        "download_all_no_labels", False
+    )
+
     # Check create_volumes is valid:
     valid_create_volumes = ["all", "grayscale", "mask", "none", None]
     if create_volumes not in valid_create_volumes:
@@ -664,7 +720,10 @@ def main(args):
             f"Invalid value for --create_volumes: {create_volumes}. Valid values are: {valid_create_volumes}"
         )
 
-    if create_volumes is not None and create_volumes != "none" and volumes_path is None:
+    if (
+        (create_volumes is not None and create_volumes != "none")
+        or (download_all_no_labels)
+    ) and volumes_path is None:
         raise ValueError(
             f"You must provide --volumes_path if --create_volumes is set to {create_volumes}"
         )
@@ -701,6 +760,20 @@ def main(args):
         args.existing_segmentation_folder
         or parameters.get("existing_segmentation_folder", None)
     )
+
+    if download_all_no_labels:
+        download_dicoms_into_volumes(
+            project_id=mdai_project_id,
+            dataset_id=mdai_dataset_id,
+            out_folder=out_folder,
+            volumes_path=volumes_path,
+            env_variable=mdai_token_env_variable,
+            domain=mdai_domain,
+            output_image_format=output_image_format,
+        )
+        logger.info("Finished downloading all dicoms (no labels). Exiting.")
+        return
+
     if only_merge_3d_slices:
         no_download = True
 
@@ -714,6 +787,13 @@ def main(args):
             path=str(out_folder),
             annotations_only=mdai_annotations_only,
         )
+        mdai_client.download_dicom_metadata(
+            project_id=mdai_project_id,
+            dataset_id=mdai_dataset_id,
+            format="json",
+            path=str(out_folder),
+        )
+
         if not mdai_annotations_only:
             logger.info("Downloaded dicoms and annotations. Merging all parts...")
             _part_common = f"project_{mdai_project_id}_images_dataset_{mdai_dataset_id}"
@@ -1034,6 +1114,12 @@ def get_download_parser():
         "--series_only_annotations",
         action="store_true",
         help="Set to true for label groups with no image data, only series and study level annotations",
+    )
+    parser.add_argument(
+        "--download_all_no_labels",
+        action="store_true",
+        help="""Download all dicoms from the dataset, ignoring labels and annotations.
+        Useful when needing to download non-annotated data.""",
     )
 
     parser.add_argument(
